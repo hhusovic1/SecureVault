@@ -1,0 +1,128 @@
+<header>
+  <h1>Secure<span>Vault</span></h1>
+  <p>Hibridni kriptosistem — handshake, enkriptovani trezor i empirijska analiza algoritama, uživo u browseru.</p>
+</header>
+
+<main>
+  <div class="err" *ngIf="error">{{ error }}</div>
+
+  <!-- 1. SESIJA -->
+  <section class="card">
+    <h2>
+      <span class="num">1</span>
+      <svg viewBox="0 0 24 24" class="ico"><path d="M12 2l7 4v6c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6l7-4z"/></svg>
+      Sigurna sesija
+      <span class="badge" [class.est]="sv.established">
+        {{ sv.established ? 'ESTABLISHED · ' + sessionShort : 'nema sesije' }}
+      </span>
+    </h2>
+    <p class="hint">Klijent (ovaj browser) i server izvode zajednički ključ preko <b>ECDH (P-256)</b>,
+      server se autentifikuje <b>digitalnim potpisom</b>, a ključ sesije nastaje <b>HKDF</b> izvođenjem.
+      Sva kriptografija ide preko <code>Web Crypto API</code>.</p>
+    <div class="row">
+      <button (click)="doHandshake()" [disabled]="handshaking">
+        {{ handshaking ? 'Uspostavljam…' : (sv.established ? 'Ponovi handshake' : 'Uspostavi sesiju') }}
+      </button>
+    </div>
+    <ul class="steps" *ngIf="steps.length">
+      <li *ngFor="let s of steps" [class.done]="s.state==='done'" [class.fail]="s.state==='fail'">
+        <span class="mk">{{ s.state === 'done' ? '✓' : s.state === 'fail' ? '✗' : '…' }}</span>
+        {{ s.label }}
+      </li>
+    </ul>
+  </section>
+
+  <!-- 2. TREZOR -->
+  <section class="card" [class.locked]="!sv.established">
+    <h2>
+      <span class="num">2</span>
+      <svg viewBox="0 0 24 24" class="ico"><path d="M6 10V7a6 6 0 1112 0v3h1a1 1 0 011 1v9a1 1 0 01-1 1H5a1 1 0 01-1-1v-9a1 1 0 011-1h1zm2 0h8V7a4 4 0 10-8 0v3z"/></svg>
+      Trezor
+    </h2>
+    <p class="hint">Fajl se šalje serveru i tamo čuva <b>enkriptovan AES-256-GCM ključem sesije</b>.
+      Preuzimanjem se dekriptuje. Bez uspostavljene sesije trezor je zaključan.</p>
+
+    <div *ngIf="!sv.established" class="disabled-note">🔒 Uspostavi sesiju da otključaš trezor.</div>
+
+    <ng-container *ngIf="sv.established">
+      <div class="row">
+        <input type="file" (change)="onFileSelected($event)">
+        <button (click)="doUpload()" [disabled]="uploading || !selectedFile">
+          {{ uploading ? 'Otpremam…' : 'Otpremi' }}
+        </button>
+        <button class="ghost" (click)="refresh()">Osvježi listu</button>
+      </div>
+
+      <table *ngIf="files.length">
+        <thead><tr><th>Naziv</th><th>Veličina</th><th>ID</th><th></th></tr></thead>
+        <tbody>
+          <tr *ngFor="let f of files">
+            <td>{{ f.originalName }}</td>
+            <td>{{ formatBytes(f.plaintextSize) }}</td>
+            <td><code>{{ f.fileId.slice(0, 8) }}</code></td>
+            <td><a class="dl" (click)="download(f)">preuzmi ↓</a></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="disabled-note" *ngIf="!files.length">Trezor je prazan — otpremi prvi fajl.</p>
+    </ng-container>
+  </section>
+
+  <!-- 3. BENCHMARK -->
+  <section class="card">
+    <h2>
+      <span class="num">3</span>
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 20V10h4v10H4zm6 0V4h4v16h-4zm6 0v-7h4v7h-4z"/></svg>
+      Benchmark
+    </h2>
+    <p class="hint">Mjeri brzinu simetričnih algoritama na serveru i crta propusnost (MB/s).
+      Pokreni više kombinacija — graf ih poredi.</p>
+    <div class="row">
+      <select [(ngModel)]="benchAlg">
+        <option value="AES">AES</option>
+        <option value="3DES">3DES</option>
+        <option value="DES">DES</option>
+      </select>
+      <select [(ngModel)]="benchKey">
+        <option [ngValue]="128">128-bit</option>
+        <option [ngValue]="192">192-bit</option>
+        <option [ngValue]="256">256-bit</option>
+      </select>
+      <label class="inline">Veličina (KB)
+        <input type="number" [(ngModel)]="benchSize" min="1" style="width:100px"></label>
+      <label class="inline">Ponavljanja
+        <input type="number" [(ngModel)]="benchReps" min="1" style="width:70px"></label>
+      <button (click)="runBench()" [disabled]="benchBusy">{{ benchBusy ? 'Mjerim…' : 'Pokreni' }}</button>
+      <button class="ghost" (click)="clearBench()">Očisti</button>
+    </div>
+    <canvas #benchCanvas width="900" height="320"></canvas>
+    <table *ngIf="benchRows.length">
+      <thead><tr><th>Algoritam</th><th>Ključ</th><th>KB</th><th>Enc (ms)</th><th>Propusnost (MB/s)</th></tr></thead>
+      <tbody>
+        <tr *ngFor="let r of benchRows">
+          <td>{{ r.algorithm }}</td><td>{{ r.keySizeBits }}</td><td>{{ r.dataSizeKB }}</td>
+          <td>{{ r.avgEncryptMs.toFixed(3) }}</td><td><b>{{ r.encryptThroughputMBs.toFixed(1) }}</b></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 4. BRUTE-FORCE -->
+  <section class="card">
+    <h2>
+      <span class="num">4</span>
+      <svg viewBox="0 0 24 24" class="ico"><path d="M12 2a7 7 0 00-7 7c0 3 2 5 2 7v3a1 1 0 001 1h8a1 1 0 001-1v-3c0-2 2-4 2-7a7 7 0 00-7-7zm-2 18h4"/></svg>
+      Brute-force na DES ključu <span class="tag">edukativno</span>
+    </h2>
+    <p class="hint">Probija vještački skraćeni DES ključ za razne dužine i crta vrijeme — pokazuje
+      <b>eksponencijalni rast</b> troška napada. Radi samo nad ključem koji server sam generiše.</p>
+    <div class="row">
+      <label class="inline">Od bita <input type="number" [(ngModel)]="bfMin" min="1" max="28" style="width:70px"></label>
+      <label class="inline">Do bita <input type="number" [(ngModel)]="bfMax" min="1" max="28" style="width:70px"></label>
+      <button (click)="runBrute()" [disabled]="bruteBusy">{{ bruteBusy ? 'Napadam…' : 'Pokreni napad' }}</button>
+    </div>
+    <canvas #bruteCanvas width="900" height="320"></canvas>
+  </section>
+
+  <footer>SecureVault · završni rad „Enkripcijski algoritmi" · Angular {{ '19' }} + Spring Boot</footer>
+</main>

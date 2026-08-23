@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: securevault
+  datasource:
+    url: jdbc:h2:mem:securevault;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  h2:
+    console:
+      enabled: true          # /h2-console — pregled metapodataka sesija/fajlova
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
+
+securevault:
+  storage-dir: vault-storage   # gdje se čuvaju šifrati fajlova
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
